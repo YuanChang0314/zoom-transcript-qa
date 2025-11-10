@@ -1,3 +1,7 @@
+const BACKEND_BASE = "https://zoom-qa-backend.onrender.com"; 
+const WS_URL = `${BACKEND_BASE.replace("https://", "wss://")}/ws`;
+const OAUTH_CALLBACK = `${BACKEND_BASE}/oauth/callback`;
+
 (function () {
   const state = {
     meetingId: null,
@@ -48,10 +52,7 @@
       // Exchange code for access token
       const fd = new FormData();
       fd.append("code", res.code);
-      const r = await fetch("http://localhost:8000/oauth/callback", {
-        method: "POST",
-        body: fd
-      });
+      const r = await fetch(OAUTH_CALLBACK, { method: "POST", body: fd });
       const token = await r.json();
       state.accessToken = token.access_token || null;
       logJSON(elAuth, token);
@@ -74,8 +75,7 @@
 
   document.getElementById("btn-connect").addEventListener("click", async () => {
     const mid = state.meetingId || "local-dev";
-    const url = `ws://localhost:8000/ws?meeting_id=${encodeURIComponent(mid)}`;
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(`${WS_URL}?meeting_id=${encodeURIComponent(mid)}`);
     state.ws = ws;
 
     ws.onopen = () => {

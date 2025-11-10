@@ -1,5 +1,27 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
-.DS_Store
+*.pyo
+*.pyd
+*.log
 .env
+.env.*
+.pytest_cache/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+*.map
+
+# Misc
+*.swp
+.idea/
+.vscode/
