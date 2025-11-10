@@ -12,7 +12,7 @@ from typing import Dict, Any
 
 ZOOM_CLIENT_ID = os.getenv("fzZWIO_CQamd_R8XiG7Q1A", "")
 ZOOM_CLIENT_SECRET = os.getenv("a8ilzXuHY3b9bdXYV50oX2KmE3DSl24n", "")
-ZOOM_REDIRECT_URI = os.getenv("ZOOM_REDIRECT_URI", "https://your.domain.com/oauth/callback")
+ZOOM_REDIRECT_URI = os.getenv("ZOOM_REDIRECT_URI", "https://zoom-transcript-qa.onrender.com/oauth/callback")
 
 def exchange_code_for_token(code: str) -> Dict[str, Any]:
     """
