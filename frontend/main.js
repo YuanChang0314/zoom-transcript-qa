@@ -1,4 +1,4 @@
-const BACKEND_BASE = "https://zoom-qa-backend.onrender.com"; 
+const BACKEND_BASE = "https://zoom-transcript-qa.onrender.com"; 
 const WS_URL = `${BACKEND_BASE.replace("https://", "wss://")}/ws`;
 const OAUTH_CALLBACK = `${BACKEND_BASE}/oauth/callback`;
 
