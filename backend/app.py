@@ -83,6 +83,16 @@ async def broadcast_to_meeting(meeting_id: str, message: Dict[str, Any]):
 async def oauth_callback(code: str = Form(...)):
     token_payload = exchange_code_for_token(code)
     return JSONResponse(token_payload)
+@app.get("/oauth/callback")
+async def oauth_callback_get(code: str = Query(None), state: str = Query(None)):
+    if not code:
+        return JSONResponse({"error": "missing code"}, status_code=400)
+    token_payload = exchange_code_for_token(code)
+    return JSONResponse(token_payload)
+@app.post("/oauth/callback")
+async def oauth_callback_post(code: str = Form(...)):
+    token_payload = exchange_code_for_token(code)
+    return JSONResponse(token_payload)
 
 # ---------------- Optional: Zoom chat ----------------
 @app.post("/chat")
