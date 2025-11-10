@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self' https:; connect-src 'self' https: ws: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' https: 'unsafe-eval'; frame-ancestors 'self' https://*.zoom.us https://*.zoom.com;">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Zoom Transcript QA</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="app">
+    <h1>Transcript QA (Zoom App)</h1>
+
+    <div class="controls">
+      <button id="btn-auth">Authorize (In-client OAuth)</button>
+      <button id="btn-context">Get Meeting Context</button>
+      <button id="btn-connect">Connect WebSocket</button>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <h2>Meeting</h2>
+        <pre id="ctx"></pre>
+      </div>
+      <div class="col">
+        <h2>Auth</h2>
+        <pre id="auth"></pre>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <h2>Transcripts</h2>
+        <div id="transcripts"></div>
+      </div>
+      <div class="col">
+        <h2>Q&A</h2>
+        <div id="qna"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://appssdk.zoom.us/sdk.min.js"></script>
+  <script src="./main.js"></script>
+</body>
+</html>
