@@ -17,6 +17,7 @@ from typing import Dict, Set, Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 
 from qna import analyze_transcript_chunk
@@ -79,21 +80,36 @@ async def broadcast_to_meeting(meeting_id: str, message: Dict[str, Any]):
                 meeting_clients[meeting_id].discard(ws)
 
 # ---------------- OAuth callback ----------------
-@app.post("/oauth/callback")
-async def oauth_callback(code: str = Form(...)):
-    token_payload = exchange_code_for_token(code)
-    return JSONResponse(token_payload)
-@app.get("/oauth/callback")
-async def oauth_callback_get(code: str = Query(None), state: str = Query(None)):
-    if not code:
-        return JSONResponse({"error": "missing code"}, status_code=400)
-    token_payload = exchange_code_for_token(code)
-    return JSONResponse(token_payload)
-@app.post("/oauth/callback")
-async def oauth_callback_post(code: str = Form(...)):
-    token_payload = exchange_code_for_token(code)
-    return JSONResponse(token_payload)
+@app.api_route("/oauth/callback", methods=["GET", "POST"])
+async def oauth_callback(request: Request) -> JSONResponse:
+    """
+    Unified OAuth callback that works for both GET (?code=...) and POST (form-encoded).
+    It surfaces Zoom's token-exchange errors instead of returning a blank 500.
+    """
+    code = request.query_params.get("code")
 
+    # If POST, Zoom (or future flows) may send code in form body
+    if not code and request.method == "POST":
+        form = await request.form()
+        code = form.get("code")
+
+    if not code:
+        # also handle error returned from authorize step if present
+        auth_error = request.query_params.get("error")
+        if auth_error:
+            return JSONResponse({"stage": "authorize", "error": auth_error}, status_code=400)
+        raise HTTPException(status_code=400, detail="missing code")
+
+    try:
+        # If you later use PKCE (Zoom Apps), also pass code_verifier collected on the client.
+        token_payload = exchange_code_for_token(code)
+        # If your exchange returns a dict with status on error, surface it
+        if isinstance(token_payload, dict) and token_payload.get("status", 200) != 200:
+            return JSONResponse({"stage": "token", **token_payload}, status_code=502)
+        return JSONResponse(token_payload)
+    except Exception as e:
+        # Do not hide the error behind a raw 500; make debugging visible
+        return JSONResponse({"error": "token_exchange_failed", "detail": str(e)}, status_code=500)
 # ---------------- Optional: Zoom chat ----------------
 @app.post("/chat")
 async def chat_endpoint(access_token: str = Form(...), to_jid: str = Form(...), message: str = Form(...)):
