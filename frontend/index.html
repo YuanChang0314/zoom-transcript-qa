@@ -2,9 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta
-    http-equiv="Content-Security-Policy"
-    content="default-src 'self' https:; connect-src 'self' https: ws: wss:; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' https: 'unsafe-eval'; frame-ancestors 'self' https://*.zoom.us https://*.zoom.com;">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' https:;
+                 connect-src 'self' https: ws: wss:;
+                 img-src 'self' data: https:;
+                 style-src 'self' 'unsafe-inline' https:;
+                 script-src 'self' https: 'unsafe-eval';
+                 frame-ancestors 'self' https://*.zoom.us https://*.zoom.com;">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Zoom Transcript QA</title>
   <link rel="stylesheet" href="./style.css" />
@@ -43,6 +47,57 @@
   </div>
 
   <script src="https://appssdk.zoom.us/sdk.min.js"></script>
+
   <script src="./main.js"></script>
+  <script>
+    // === Backend base URL (Render) ===
+    const BACKEND_BASE = "https://zoom-transcript-qa.onrender.com";
+
+    // ---- PKCE helpers ----
+    const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/,"");
+
+    async function createPkcePair() {
+      const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
+      const verifier = b64url(verifierBytes);               // 43–128 chars
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+      const challenge = b64url(digest);
+      return { verifier, challenge };
+    }
+
+    let PKCE_VERIFIER = null;
+
+    async function authorizeInClient() {
+      const { verifier, challenge } = await createPkcePair();
+      PKCE_VERIFIER = verifier;
+
+      await zoomSdk.config({ capabilities: ["authorize", "getMeetingContext"] });
+
+      await zoomSdk.authorize({
+        codeChallenge: challenge,
+        codeChallengeMethod: "S256",
+        state: "zoom-transcript-qa"
+      });
+    }
+
+    zoomSdk.addEventListener("onAuthorized", async (payload) => {
+      const code = payload.code;
+      const redirect_uri = payload.redirectUri || payload.redirectUrl; 
+
+      try {
+        const resp = await fetch(`${BACKEND_BASE}/oauth/exchange`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, code_verifier: PKCE_VERIFIER, redirect_uri })
+        });
+        const json = await resp.json();
+        document.getElementById("auth").textContent = JSON.stringify(json, null, 2);
+      } catch (e) {
+        document.getElementById("auth").textContent = JSON.stringify({ error: String(e) }, null, 2);
+      }
+    });
+
+    document.getElementById("btn-auth").onclick = authorizeInClient;
+  </script>
 </body>
 </html>
