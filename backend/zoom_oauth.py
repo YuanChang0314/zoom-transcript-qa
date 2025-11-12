@@ -8,30 +8,38 @@ Minimal Zoom in-client OAuth scaffolding.
 import os
 import base64
 import requests
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
-ZOOM_CLIENT_ID = os.getenv("fzZWIO_CQamd_R8XiG7Q1A", "")
-ZOOM_CLIENT_SECRET = os.getenv("a8ilzXuHY3b9bdXYV50oX2KmE3DSl24n", "")
-ZOOM_REDIRECT_URI = os.getenv("ZOOM_REDIRECT_URI", "https://zoom-transcript-qa.onrender.com/oauth/callback")
+ZOOM_CLIENT_ID = os.getenv("ZOOM_CLIENT_ID")
+ZOOM_CLIENT_SECRET = os.getenv("ZOOM_CLIENT_SECRET", "")
+ZOOM_REDIRECT_URI = os.getenv("ZOOM_REDIRECT_URI")
 
-def exchange_code_for_token(code: str) -> Dict[str, Any]:
+def exchange_code_for_token(code: str, code_verifier: Optional[str] = None) -> Dict[str, Any]:
     """
-    Implement the OAuth token exchange with Zoom's OAuth endpoint.
-    This function returns a dict like:
-    {"access_token": "...", "refresh_token": "...", "expires_in": 3600, ...}
+    Exchange authorization code for tokens.
+    Supports:
+      - Standard OAuth (Authorization Code + Basic auth)
+      - PKCE (Zoom Apps in-client OAuth) with code_verifier
     """
-    if not ZOOM_CLIENT_ID or not ZOOM_CLIENT_SECRET:
-        # PoC mode: return fake payload so frontend flow does not break.
-        return {"access_token": "DUMMY", "refresh_token": "DUMMY", "expires_in": 3600}
+    if not ZOOM_CLIENT_ID or not ZOOM_REDIRECT_URI:
+        raise RuntimeError("Missing ZOOM_CLIENT_ID or ZOOM_REDIRECT_URI")
 
-    token_url = "https://zoom.us/oauth/token"
-    auth = base64.b64encode(f"{ZOOM_CLIENT_ID}:{ZOOM_CLIENT_SECRET}".encode()).decode()
-    headers = {"Authorization": f"Basic {auth}"}
-    params = {
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    data = {
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": ZOOM_REDIRECT_URI
+        "redirect_uri": ZOOM_REDIRECT_URI,
     }
-    resp = requests.post(token_url, headers=headers, params=params, timeout=20)
+
+    if code_verifier:
+        data["code_verifier"] = code_verifier
+
+    if ZOOM_CLIENT_SECRET:
+        basic = base64.b64encode(f"{ZOOM_CLIENT_ID}:{ZOOM_CLIENT_SECRET}".encode()).decode()
+        headers["Authorization"] = f"Basic {basic}"
+    else:
+        data["client_id"] = ZOOM_CLIENT_ID
+
+    resp = requests.post(TOKEN_URL, data=data, timeout=20)
     resp.raise_for_status()
     return resp.json()
