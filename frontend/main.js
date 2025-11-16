@@ -43,8 +43,15 @@ const OAUTH_CALLBACK = `${BACKEND_BASE}/oauth/callback`;
     pushCard(elTrans, `[SDK] Config failed: ${e.message || e}`);
   });
 
-  // Buttons
+  // ========== 授权按钮 - 只保留这一个 ==========
   document.getElementById("btn-auth").addEventListener("click", async () => {
+    const btn = document.getElementById("btn-auth");
+    
+    // 防止重复点击
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = "Authorizing...";
+    
     try {
       if (!state.installed) {
         throw new Error("Zoom SDK not initialized. This app must run inside Zoom client.");
@@ -52,6 +59,12 @@ const OAUTH_CALLBACK = `${BACKEND_BASE}/oauth/callback`;
       
       pushCard(elAuth, "Starting authorization...");
       const res = await zoomSdk.authorize({ scopes: [] });
+      
+      // 检查res.code是否存在
+      if (!res || !res.code) {
+        throw new Error("No authorization code received from Zoom");
+      }
+      
       logJSON(elAuth, { step: "got_code", code: res.code });
       
       // Exchange code for access token using GET request with query parameter
@@ -98,6 +111,9 @@ const OAUTH_CALLBACK = `${BACKEND_BASE}/oauth/callback`;
         details: e.stack 
       });
       pushCard(elAuth, `✗ Auth failed: ${e.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Authorize (In-client OAuth)";
     }
   });
 
@@ -134,6 +150,7 @@ const OAUTH_CALLBACK = `${BACKEND_BASE}/oauth/callback`;
     }
   });
 
+  // ========== 连接WebSocket按钮 ==========
   document.getElementById("btn-connect").addEventListener("click", async () => {
     try {
       // Close existing connection if any
