@@ -104,22 +104,23 @@ async def broadcast_to_meeting(meeting_id: str, message: Dict[str, Any]):
 # ---------------- OAuth callback ----------------
 @app.api_route("/oauth/callback", methods=["GET", "POST"])
 async def oauth_callback(request: Request) -> JSONResponse:
-    """
-    Unified OAuth callback that works for both GET (?code=...) and POST (form-encoded).
-    It surfaces Zoom's token-exchange errors instead of returning a blank 500.
-    """
+    """OAuth callback with detailed debugging"""
+
+    print(f"[OAuth] Method: {request.method}")
+    print(f"[OAuth] Query params: {dict(request.query_params)}")
+    print(f"[OAuth] Headers: {dict(request.headers)}")
+    
     code = request.query_params.get("code")
 
-    # If POST, Zoom (or future flows) may send code in form body
     if not code and request.method == "POST":
         try:
             form = await request.form()
+            print(f"[OAuth] Form data: {dict(form)}")
             code = form.get("code")
         except Exception as e:
             print(f"[OAuth] Failed to parse form: {e}")
 
     if not code:
-        # also handle error returned from authorize step if present
         auth_error = request.query_params.get("error")
         auth_error_desc = request.query_params.get("error_description", "")
         if auth_error:
@@ -137,10 +138,11 @@ async def oauth_callback(request: Request) -> JSONResponse:
         }, status_code=400)
 
     try:
-        print(f"[OAuth] Exchanging code for token...")
+        print(f"[OAuth] Exchanging code (length={len(code)})...")
+        print(f"[OAuth] Using REDIRECT_URI: {os.getenv('ZOOM_REDIRECT_URI')}")
+        
         token_payload = exchange_code_for_token(code)
         
-        # If exchange returns a dict with error status, surface it
         if isinstance(token_payload, dict):
             if token_payload.get("status") and token_payload.get("status") != 200:
                 print(f"[OAuth] Token exchange failed: {token_payload}")
@@ -149,7 +151,6 @@ async def oauth_callback(request: Request) -> JSONResponse:
                     **token_payload
                 }, status_code=token_payload.get("status", 502))
             
-            # Check for Zoom API errors
             if "error" in token_payload:
                 print(f"[OAuth] Zoom error: {token_payload}")
                 return JSONResponse({
@@ -162,6 +163,8 @@ async def oauth_callback(request: Request) -> JSONResponse:
         
     except Exception as e:
         print(f"[OAuth] Exception during token exchange: {e}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse({
             "error": "token_exchange_failed", 
             "detail": str(e)
