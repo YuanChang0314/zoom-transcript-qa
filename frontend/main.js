@@ -28,7 +28,6 @@ const OAUTH_CALLBACK = `${BACKEND_BASE}/oauth/callback`;
 
   // Configure Zoom Apps SDK
   zoomSdk.config({
-    // Add capabilities as needed
     capabilities: [
       "authorize",
       "getMeetingContext",
@@ -38,69 +37,158 @@ const OAUTH_CALLBACK = `${BACKEND_BASE}/oauth/callback`;
     ]
   }).then(() => {
     state.installed = true;
+    pushCard(elTrans, "[SDK] Initialized successfully");
   }).catch((e) => {
-    // If this page is opened outside Zoom client, SDK config will fail.
-    // You can still test WebSocket locally; just ignore SDK in that case.
-    console.warn("Zoom SDK config failed:", e && e.message ? e.message : e);
+    console.warn("Zoom SDK config failed:", e);
+    pushCard(elTrans, `[SDK] Config failed: ${e.message || e}`);
   });
 
   // Buttons
   document.getElementById("btn-auth").addEventListener("click", async () => {
     try {
+      if (!state.installed) {
+        throw new Error("Zoom SDK not initialized. This app must run inside Zoom client.");
+      }
+      
+      pushCard(elAuth, "Starting authorization...");
       const res = await zoomSdk.authorize({ scopes: [] });
-      logJSON(elAuth, { code: res.code });
-      // Exchange code for access token
-      const fd = new FormData();
-      fd.append("code", res.code);
-      const r = await fetch(OAUTH_CALLBACK, { method: "POST", body: fd });
+      logJSON(elAuth, { step: "got_code", code: res.code });
+      
+      // Exchange code for access token using GET request with query parameter
+      pushCard(elAuth, "Exchanging code for token...");
+      const callbackUrl = `${OAUTH_CALLBACK}?code=${encodeURIComponent(res.code)}`;
+      
+      const r = await fetch(callbackUrl, { 
+        method: "GET",
+        headers: {
+          "Accept": "application/json"
+        }
+      });
+      
+      if (!r.ok) {
+        const errorText = await r.text();
+        throw new Error(`HTTP ${r.status}: ${errorText}`);
+      }
+      
       const token = await r.json();
+      
+      // Check if token exchange returned an error
+      if (token.error || token.stage) {
+        logJSON(elAuth, { 
+          error: "Token exchange failed", 
+          details: token 
+        });
+        return;
+      }
+      
       state.accessToken = token.access_token || null;
-      logJSON(elAuth, token);
+      logJSON(elAuth, { 
+        success: true, 
+        access_token: token.access_token ? "***" : null,
+        token_type: token.token_type,
+        expires_in: token.expires_in
+      });
+      pushCard(elAuth, "✓ Authorization successful");
+      
     } catch (e) {
-      logJSON(elAuth, { error: e && e.message ? e.message : String(e) });
+      console.error("Auth error:", e);
+      logJSON(elAuth, { 
+        error: e.message || String(e),
+        type: e.name,
+        details: e.stack 
+      });
+      pushCard(elAuth, `✗ Auth failed: ${e.message}`);
     }
   });
 
   document.getElementById("btn-context").addEventListener("click", async () => {
     try {
+      if (!state.installed) {
+        // Fallback for testing outside Zoom
+        state.meetingId = "local-dev";
+        logJSON(elCtx, { 
+          outsideZoom: true, 
+          meetingId: state.meetingId,
+          note: "Using fallback meeting ID for local testing"
+        });
+        pushCard(elCtx, "Using local-dev meeting ID (outside Zoom)");
+        return;
+      }
+      
+      pushCard(elCtx, "Getting meeting context...");
       const ctx = await zoomSdk.getMeetingContext();
-      state.meetingId = ctx && (ctx.meetingUUID || ctx.meetingNumber || ctx.sessionUUID) || "local-dev";
+      state.meetingId = ctx.meetingUUID || ctx.meetingNumber || ctx.sessionUUID || "local-dev";
       logJSON(elCtx, ctx);
+      pushCard(elCtx, `✓ Meeting ID: ${state.meetingId}`);
+      
     } catch (e) {
-      // If outside Zoom, you can still set a fake meetingId for local dev
+      console.error("Context error:", e);
+      // Fallback to local-dev
       state.meetingId = "local-dev";
-      logJSON(elCtx, { outsideZoom: true, meetingId: state.meetingId, error: e && e.message ? e.message : String(e) });
+      logJSON(elCtx, { 
+        error: e.message || String(e),
+        fallback: true, 
+        meetingId: state.meetingId 
+      });
+      pushCard(elCtx, `Using fallback meeting ID: ${state.meetingId}`);
     }
   });
 
   document.getElementById("btn-connect").addEventListener("click", async () => {
-    const mid = state.meetingId || "local-dev";
-    const ws = new WebSocket(`${WS_URL}?meeting_id=${encodeURIComponent(mid)}`);
-    state.ws = ws;
-
-    ws.onopen = () => {
-      pushCard(elTrans, "[ws] connected");
-    };
-    ws.onmessage = (ev) => {
-      try {
-        const data = JSON.parse(ev.data);
-        if (data.type === "heartbeat") return;
-        if (data.type === "transcript") {
-          pushCard(elTrans, data.text);
-        } else if (data.type === "qna") {
-          pushCard(elQnA, JSON.stringify(data.data, null, 2));
-        } else {
-          pushCard(elTrans, ev.data);
-        }
-      } catch (err) {
-        pushCard(elTrans, ev.data);
+    try {
+      // Close existing connection if any
+      if (state.ws && state.ws.readyState !== WebSocket.CLOSED) {
+        state.ws.close();
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
-    };
-    ws.onclose = () => {
-      pushCard(elTrans, "[ws] closed");
-    };
-    ws.onerror = (e) => {
-      pushCard(elTrans, "[ws] error");
-    };
+
+      const mid = state.meetingId || "local-dev";
+      const wsFullUrl = `${WS_URL}?meeting_id=${encodeURIComponent(mid)}`;
+      
+      pushCard(elTrans, `[WS] Connecting to ${wsFullUrl}`);
+      const ws = new WebSocket(wsFullUrl);
+      state.ws = ws;
+
+      ws.onopen = () => {
+        pushCard(elTrans, "[WS] ✓ Connected successfully");
+        console.log("WebSocket connected");
+      };
+      
+      ws.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.type === "heartbeat") {
+            console.log("Heartbeat received");
+            return;
+          }
+          if (data.type === "transcript") {
+            pushCard(elTrans, `[Transcript] ${data.text}`);
+          } else if (data.type === "qna") {
+            pushCard(elQnA, JSON.stringify(data.data, null, 2));
+          } else {
+            pushCard(elTrans, `[Unknown] ${ev.data}`);
+          }
+        } catch (err) {
+          console.error("Message parse error:", err);
+          pushCard(elTrans, `[Raw] ${ev.data}`);
+        }
+      };
+      
+      ws.onclose = (ev) => {
+        const reason = ev.reason || "No reason provided";
+        const code = ev.code;
+        pushCard(elTrans, `[WS] ✗ Closed (code: ${code}, reason: ${reason})`);
+        console.log("WebSocket closed:", code, reason);
+      };
+      
+      ws.onerror = (e) => {
+        pushCard(elTrans, "[WS] ✗ Connection error - check backend URL and CORS");
+        console.error("WebSocket error:", e);
+      };
+      
+    } catch (e) {
+      console.error("Connect error:", e);
+      pushCard(elTrans, `[WS] ✗ Failed to connect: ${e.message}`);
+    }
   });
 })();
