@@ -133,7 +133,12 @@ const OAUTH_CALLBACK = `${BACKEND_BASE}/oauth/callback`;
       
       pushCard(elCtx, "Getting meeting context...");
       const ctx = await zoomSdk.getMeetingContext();
-      state.meetingId = ctx.meetingUUID || ctx.meetingNumber || ctx.sessionUUID || "local-dev";
+      state.meetingId = ctx.meetingUUID
+        || ctx.meetingNumber
+        || ctx.meetingID // Some Zoom SDK payloads expose meetingID instead of meetingNumber/UUID
+        || ctx.meetingId
+        || ctx.sessionUUID
+        || "local-dev";
       logJSON(elCtx, ctx);
       pushCard(elCtx, `✓ Meeting ID: ${state.meetingId}`);
       
